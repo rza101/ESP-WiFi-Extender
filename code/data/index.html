@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>WIFI REPEATER</title>
+    <link href="bootstrap.min.css.gzp" rel="stylesheet" type="text/css">
+    <link href="bootstrap-vue.min.css.gzp" rel="stylesheet" type="text/css">
+    <script src="axios.min.js.gzp" type="application/javascript"></script>
+    <script src="vue.min.js.gzp" type="application/javascript"></script>
+    <script src="bootstrap-vue.min.js.gzp" type="application/javascript"></script>
+  </head>
+  <body>
+    <div class="container-md">
+      <h1 class="mt-3 display-5 text-center">
+        WIFI REPEATER
+      </h1>
+
+      <noscript>
+        <div class="text-center mb-3">Javascript must be enabled!!!</div>
+      </noscript>
+
+      <b-card border-variant="primary" class="mt-3" id="ap">
+        <b-card-header header-bg-variant="primary" class="text-center text-white" v-b-toggle="'ap-collapse'">
+          Access Point
+        </b-card-header>
+        <b-collapse id="ap-collapse">
+          <b-card-body>
+            <b-card border-variant="primary">
+              <b-card-header header-bg-variant="primary" class="text-center text-white">
+                AP Settings
+              </b-card-header>
+              <b-card-body>
+                <div class="justify-content-md-center mb-3 text-center">
+                  <span>{{this.savedAP}}</span>
+                </div>
+                <ap-form></ap-form>
+              </b-card-body>
+            </b-card>
+          </b-card-body>
+          <b-card-body>
+            <b-card border-variant="primary">
+              <b-card-header header-bg-variant="primary" class="text-center text-white">
+                AP IP Settings
+              </b-card-header>
+              <b-card-body>
+                <div class="justify-content-md-center mb-3 text-center">
+                  <span>{{this.savedAPIP}}</span>
+                </div>
+                <ap-ip-form></ap-ip-form>
+              </b-card-body>
+            </b-card>
+          </b-card-body>
+        </b-collapse>
+      </b-card>
+
+      <b-card border-variant="primary" class="mt-3" id="station">
+        <b-card-header header-bg-variant="primary" class="text-center text-white" v-b-toggle="'sta-collapse'">
+          Station
+        </b-card-header>
+        <b-collapse id="sta-collapse">
+          <b-card-body>
+            <b-card border-variant="primary">
+              <b-card-header header-bg-variant="primary" class="text-center text-white">
+                Station Settings
+              </b-card-header>
+              <b-card-body>
+                <div class="justify-content-md-center mb-3 text-center">
+                  <span>{{this.savedStation}}</span>
+                </div>
+                <sta-form></sta-form>
+              </b-card-body>
+            </b-card>
+          </b-card-body>
+          <b-card-body>
+            <b-card border-variant="primary">
+              <b-card-header header-bg-variant="primary" class="text-center text-white">
+                Station IP Settings
+              </b-card-header>
+              <b-card-body>
+                <div class="justify-content-md-center mb-3 text-center">
+                  <span>{{this.savedStationIP}}</span>
+                </div>
+                <sta-ip-form></sta-ip-form>
+              </b-card-body>
+            </b-card>
+          </b-card-body>
+        </b-collapse>
+      </b-card>
+
+      <b-card border-variant="primary" class="mt-3" id="dns">
+        <b-card-header header-bg-variant="primary" class="text-center text-white" v-b-toggle="'dns-collapse'">
+          DNS
+        </b-card-header>
+        <b-collapse id="dns-collapse">
+          <b-card-body>
+            <div class="row justify-content-md-center mb-3 text-center">
+              <span>{{this.savedDNS}}</span>
+            </div>
+            <dns-form></dns-form>
+          </b-card-body>
+        </b-collapse>
+      </b-card>
+
+      <b-card border-variant="primary" class="mt-3" id="wlan">
+        <b-card-header header-bg-variant="primary" class="text-center text-white" v-b-toggle="'wlan-collapse'">
+          WLAN
+        </b-card-header>
+        <b-collapse id="wlan-collapse">
+          <b-card-body>
+            <div class="row justify-content-md-center mb-3 text-center">
+              <span>{{this.savedWLANSetting}}</span>
+            </div>
+            <wlan-form></wlan-form>
+          </b-card-body>
+        </b-collapse>
+      </b-card>
+
+      <b-card border-variant="primary" class="mt-3" id="credentials">
+        <b-card-header header-bg-variant="primary" class="text-center text-white" v-b-toggle="'credentials-collapse'">
+          Credentials
+        </b-card-header>
+        <b-collapse id="credentials-collapse">
+          <b-card-body>
+            <div class="row justify-content-md-center mb-3 text-center">
+              <span>Username = <b>admin</b> (case sensitive)</span>
+            </div>
+            <credential-form></credential-form>
+          </b-card-body>
+        </b-collapse>
+      </b-card>
+
+      <b-card border-variant="primary" class="mt-3 mb-5" id="options">
+        <b-card-header header-bg-variant="primary" class="text-center text-white" v-b-toggle="'options-collapse'">
+          Options
+        </b-card-header>
+        <b-collapse id="options-collapse">
+          <stats-panel></stats-panel>
+          <reset-panel></reset-panel>
+          <restart-panel></restart-panel>
+          <logout-panel></logout-panel>
+        </b-collapse>
+      </b-card>
+    </div>
+    <script>
+      var initConfig = '%CONFIG%'
+      var initStats = '%STATS%'
+      var initKey = '%KEY%'
+
+      var setAPURL          = "/setap"
+      var setStaURL         = "/setsta"
+      var setDNSURL         = "/setdns"
+      var setWLANURL        = "/setwlan"
+      var setCredentialURL  = "/setcredential"
+      var getConfigURL      = "/getconfig"
+      var getStatsURL       = "/getstats"
+      var resetURL          = "/reset"
+      var restartURL        = "/restart"
+    </script>
+    <script src="%MAIN_JS%" type="application/javascript"></script>
+  </body>
+</html>
