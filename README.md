@@ -8,6 +8,7 @@ This project enables NAPT feature in ESP8266, so the chip can be used as WiFi ra
 
 - Upload the sketch code and web data code 
 - Default AP SSID is 'ESP8266 Repeater'. Connect to the network and access 192.168.4.1 in browser
+- Log in with username 'admin' and password 'admin' (password can be changed later)
 - Set AP and Station (router SSID)
 - Done
 
@@ -15,9 +16,11 @@ This project enables NAPT feature in ESP8266, so the chip can be used as WiFi ra
 - When uploading use only lwIP Lower Memory Variant and at least 256KB FS
 - 160MHz CPU Speed is more recommended
 - Changing NAPT table size is not recommended (i think the performance is the same with the default value)
-- Use external antenna or modified antenna for greater stability (and maybe higher speed)
+- Use external antenna or modified antenna (soldered wire) for greater stability (and maybe higher speed)
 - .gzp is .gz to avoid auto downloading by some external downloader
 - To reset settings without dashboard, use serial monitor and send *reset*
+- Fast blinking (every 500ms) means no station configured or not connected to station (after booting / disconnected)
+- Slow blinking (every 3s) means connected to station
 
 ## Performance
 
