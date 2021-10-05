@@ -15,7 +15,7 @@
 unsigned long lastBlink = 0;
 unsigned long blinkConnectedInterval = 3000;
 unsigned long blinkDisconnectedInterval = 500;
-unsigned int blinkChars = 500;
+const short blinkChars = 500;
 
 //  CONFIG
 
@@ -39,8 +39,8 @@ boolean noStation = true;
 
 //  NAPT SETTINGS
 
-const int napt        = 256;
-const int napt_port   = 32;
+const short napt       = 384;
+const byte napt_port   = 32;
 
 //  SERVER
 
@@ -50,9 +50,9 @@ char mainJS[34];
 
 //  STATS
 
-unsigned long freeHeap = 0;
-unsigned long heapFragPerc = 0;
-unsigned long maxHeapBlock = 0;
+unsigned int freeHeap = 0;
+byte heapFragPerc = 0;
+unsigned int maxHeapBlock = 0;
 
 unsigned long lastStatsUpdate = 0;
 
