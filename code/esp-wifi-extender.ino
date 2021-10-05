@@ -19,7 +19,7 @@ unsigned int blinkChars = 500;
 
 //  CONFIG
 
-StaticJsonDocument<768> configDoc;
+DynamicJsonDocument configDoc(768);
 const char* configPath  = "/cfg";
 
 //  FLAGS
@@ -39,7 +39,7 @@ boolean noStation = true;
 
 //  NAPT SETTINGS
 
-const int napt        = 512;
+const int napt        = 256;
 const int napt_port   = 32;
 
 //  SERVER
@@ -143,10 +143,9 @@ void espRestart(){
 
   espRestartTrigger = false;
   
-  Serial.println("Restarting in 5s...");
+  Serial.println("Restarting...");
   server.end();
-
-  delay(5000);
+  
   ESP.restart();
 }
 
@@ -866,7 +865,7 @@ void resetHandler(AsyncWebServerRequest *request){
     }
   }
   
-  request -> send(200, "application/json", generateJSON(true, "message", "Resetting Config and restarting in 5s"));
+  request -> send(200, "application/json", generateJSON(true, "message", "Resetting Config and restarting"));
   configResetTrigger = true;
 }
 
@@ -883,7 +882,7 @@ void restartHandler(AsyncWebServerRequest *request){
     }
   }
   
-  request -> send(200, "application/json", generateJSON(true, "message", "Restarting in 5s"));
+  request -> send(200, "application/json", generateJSON(true, "message", "Restarting"));
   espRestartTrigger = true;
 }
 
@@ -910,8 +909,6 @@ void notFound(AsyncWebServerRequest *request){
 void setup() {
   Serial.begin(115200);
 
-  delay(5000);
-
   Serial.println("WiFi Extender");
 
   if(LittleFS.begin()){
@@ -937,6 +934,18 @@ void setup() {
   WiFi.mode(WIFI_AP_STA);
   WiFi.setAutoReconnect(true);
   WiFi.hostname("ESP8266");
+
+  uint8_t currapmac[6];
+  uint8_t currstamac[6];
+
+  WiFi.softAPmacAddress(currapmac);
+  WiFi.macAddress(currstamac);
+  
+  uint8_t apmac[] = {0x60, 0x01, 0x94, currapmac[3], currapmac[4], currapmac[5]};
+  uint8_t stamac[] = {0x60, 0x01, 0x94, currstamac[3], currstamac[4], currstamac[5] + 1};
+  
+  wifi_set_macaddr(SOFTAP_IF, &apmac[0]);
+  wifi_set_macaddr(STATION_IF, &stamac[0]);
   
   err_t initNAPT = ip_napt_init(napt, napt_port);
   
@@ -1003,7 +1012,7 @@ void loop() {
   if(setAPTrigger){
     WiFi.softAPdisconnect();
 
-    delay(250);
+    delay(100);
 
     String apSSID = configDoc["apssid"];
     String apPW = configDoc["appass"];
@@ -1034,7 +1043,7 @@ void loop() {
   if(setStaTrigger){
     WiFi.disconnect();
 
-    delay(250);
+    delay(100);
 
     if(configDoc["stassid"].as<String>() == ""){
       Serial.println("WLAN NO STATION");
