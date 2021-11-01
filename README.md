@@ -14,8 +14,8 @@ This project enables NAPT feature in ESP8266, so the chip can be used as WiFi ra
 - Done
 
 ## Notes
-- When uploading use only lwIP Lower Memory Variant and at least 256KB FS
-- 160MHz CPU Speed may result in higher speed (not tested yet)
+- When uploading use only lwIP Lower Memory Variant (no performance gain + unstable dashboard load on lwIP Higher Bandwidth Variant) and at least 256KB FS
+- Changing CPU Speed from 80MHz to 160MHz results the same performance
 - Changing NAPT table size is not recommended (i think the performance is the same with the default value of 512)
 - Use external antenna or modified antenna (soldered wire) for greater stability (and maybe higher speed)
 - .gzp is .gz to avoid auto downloading by some external downloader
