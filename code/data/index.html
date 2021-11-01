@@ -32,7 +32,7 @@
               </b-card-header>
               <b-card-body>
                 <div class="justify-content-md-center mb-3 text-center">
-                  <ap-info></ap-info>
+                  <span>{{this.savedAP}}</span>
                 </div>
                 <ap-form></ap-form>
               </b-card-body>
@@ -45,7 +45,7 @@
               </b-card-header>
               <b-card-body>
                 <div class="justify-content-md-center mb-3 text-center">
-                  <ap-ip-info></ap-ip-info>
+                  <span>{{this.savedAPIP}}</span>
                 </div>
                 <ap-ip-form></ap-ip-form>
               </b-card-body>
@@ -66,7 +66,7 @@
               </b-card-header>
               <b-card-body>
                 <div class="justify-content-md-center mb-3 text-center">
-                  <sta-info></sta-info>
+                  <span>{{this.savedStation}}</span>
                 </div>
                 <sta-form></sta-form>
               </b-card-body>
@@ -79,7 +79,7 @@
               </b-card-header>
               <b-card-body>
                 <div class="justify-content-md-center mb-3 text-center">
-                  <sta-ip-info></sta-ip-info>
+                  <span>{{this.savedStationIP}}</span>
                 </div>
                 <sta-ip-form></sta-ip-form>
               </b-card-body>
@@ -95,7 +95,7 @@
         <b-collapse id="dns-collapse">
           <b-card-body>
             <div class="row justify-content-md-center mb-3 text-center">
-              <dns-info></dns-info>
+              <span>{{this.savedDNS}}</span>
             </div>
             <dns-form></dns-form>
           </b-card-body>
@@ -109,7 +109,7 @@
         <b-collapse id="wlan-collapse">
           <b-card-body>
             <div class="row justify-content-md-center mb-3 text-center">
-              <wlan-info></wlan-info>
+              <span>{{this.savedWLANSetting}}</span>
             </div>
             <wlan-form></wlan-form>
           </b-card-body>
@@ -123,7 +123,7 @@
         <b-collapse id="credentials-collapse">
           <b-card-body>
             <div class="row justify-content-md-center mb-3 text-center">
-              <credential-info></credential-info>
+              <span>Username = <b>admin</b> (case sensitive)</span>
             </div>
             <credential-form></credential-form>
           </b-card-body>
@@ -143,13 +143,9 @@
       </b-card>
     </div>
     <script>
-      const vars = new Vue.observable({
-        btnDisabled: false,
-        key : '%KEY%',
-        configJSON: JSON.parse('%CONFIG%'),
-        scanJSON: JSON.parse('%SCAN%'),
-        statsJSON: JSON.parse('%STATS%'),
-      })
+      var initConfig = '%CONFIG%'
+      var initStats = '%STATS%'
+      var initKey = '%KEY%'
 
       var setAPURL          = "/setap"
       var setStaURL         = "/setsta"
@@ -158,10 +154,9 @@
       var setCredentialURL  = "/setcredential"
       var getConfigURL      = "/getconfig"
       var getStatsURL       = "/getstats"
-      var getWifiScanURL    = "/getwifiscan"
       var resetURL          = "/reset"
       var restartURL        = "/restart"
     </script>
-    <script src="/main.js.gzp?key=%KEY%" type="application/javascript"></script>
+    <script src="%MAIN_JS%" type="application/javascript"></script>
   </body>
 </html>

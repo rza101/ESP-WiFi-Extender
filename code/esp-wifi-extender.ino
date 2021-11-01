@@ -45,7 +45,8 @@ const byte napt_port   = 32;
 //  SERVER
 
 AsyncWebServer server(80);
-char key[65];
+char key[129];
+char mainJS[34];
 
 //  STATS
 
@@ -68,10 +69,6 @@ IPAddress apSubnet;
 IPAddress apDNS1;
 IPAddress apDNS2;
 
-unsigned long lastScan = 0;
-
-DynamicJsonDocument wifiScan(1024);
-
 //  METHODS
 
 void blinkLedLoop(){
@@ -89,19 +86,16 @@ void blinkLedLoop(){
   if(millis() - lastBlink >= interval){
     if((reconnectFlag || firstConnect) && !noStation){
       if(firstConnect){
-        Serial.print("Connecting to ");
-        Serial.println(WiFi.SSID());
+        Serial.println("Connecting to " + WiFi.SSID() + "...");
       }
       
       if(reconnectFlag){
-        Serial.print("Reconnecting to ");
-        Serial.println(WiFi.SSID());
+        Serial.println("Reconnecting to " + WiFi.SSID() + "...");
       }
     }
     
     for(int i = 1; i <= blinkChars; i++){
-      Serial.print('\0');
-      ESP.wdtFeed();
+      Serial.print((char) 0); //NULL, not printable
     }
     
     lastBlink = millis();
@@ -109,15 +103,13 @@ void blinkLedLoop(){
 }
 
 void configInit(){
-  char configJSON[768];
-  readFile(LittleFS, configPath, configJSON, 768);
+  String configJSON = readFile(LittleFS, configPath);
 
-  DeserializationError err = deserializeJson(configDoc, (const char*) configJSON);
-
-  if(configJSON[0] == 0 || err.code() != DeserializationError::Ok){
+  if(configJSON != ""){
+    deserializeJson(configDoc, configJSON);
+  }else{
     // default config
-    Serial.print("No Config File Found or config invalid/corrupted : ");
-    Serial.println(err.c_str());
+    Serial.println("No Config File Found");
     Serial.println("Creating...");
 
     configDoc["apssid"] = "ESP8266 Repeater";
@@ -142,8 +134,6 @@ void configInit(){
     configDoc["protocol"] = 3;
 
     saveConfig();
-  }else{
-    Serial.println("Config initialized from flash successfully");
   }
 }
 
@@ -159,25 +149,84 @@ void espRestart(){
   ESP.restart();
 }
 
-void generateConfig(char* buffer, short bufferSize){
+String generateJSON(boolean success, String msgKey, String msgValue, boolean withKey = false){
+  StaticJsonDocument<256> doc;
+  String result = "";
+
+  doc["success"] = success;
+  doc[msgKey] = msgValue;
+
+  if(withKey){
+    generateRandomString(128).toCharArray(key, 129);
+    doc["key"] = key;
+  }
+
+  serializeJson(doc, result);
+
+  return result;
+}
+
+String generateJSONWithConfig(boolean success, String msgKey, String msgValue){
+  StaticJsonDocument<1024> doc;
+  String result = "";
+
+  generateRandomString(128).toCharArray(key, 129);
+
+  doc["success"] = success;
+  doc[msgKey] = msgValue;
+  doc["config"] = generateConfig();
+  doc["key"] = key;
+
+  serializeJson(doc, result);
+
+  return result;
+}
+
+String generateRandomString(byte len){
+  String randString = "";
+
+  for(byte i = 1; i <= len; i++){
+    byte randomValue = map(ESP.random()/16777215, 0, 255, 0, 63);
+    char letter = randomValue + 'a';
+    
+    if(randomValue >= 26 && randomValue <= 35){
+      letter = (randomValue - 26) + '0';
+    }else if(randomValue >= 36 && randomValue <= 61){
+      letter = (randomValue - 36) + 'A';
+    }else if(randomValue >= 62){
+      letter = '_';
+    }
+    
+    randString += letter;
+  }
+
+  randomSeed(analogRead(A0)*ESP.random() + micros()*ESP.random());
+
+  return randString;
+}
+
+String generateConfig(){
+  String temp = "";
   StaticJsonDocument<768> doc = configDoc;
 
-  char* appass = (char*) doc["appass"].as<const char*>(); 
-  char* stapass = (char*) doc["stapass"].as<const char*>();
+  String appass = doc["appass"].as<String>();
+  String stapass = doc["stapass"].as<String>();
 
-  if(strlen(appass) != 0){
-    for(int i = 2; i < strlen(appass) - 2; i++){
-      appass[i] = '*';
+  if(appass.length() != 0){
+    for(int i = 2; i < appass.length() - 2; i++){
+      appass.setCharAt(i, '*');
     }
   }
 
-  if(strlen(stapass) != 0){
-    for(int i = 2; i < strlen(stapass) - 2; i++){
-      stapass[i] = '*';
+  if(stapass.length() != 0){
+    for(int i = 2; i < stapass.length() - 2; i++){
+      stapass.setCharAt(i, '*');
     }
   }
 
   doc["appass"] = appass;
+
+  doc["stassid"] = doc["stassid"].as<String>();
   doc["stapass"] = stapass;
   
   doc["apIP"] = doc["apIP"] == nullptr ? "192.168.4.1"    : ntoip(doc["apIP"].as<unsigned long>()).toString();
@@ -194,64 +243,18 @@ void generateConfig(char* buffer, short bufferSize){
   doc.remove("dbuser");
   doc.remove("dbpass");
 
-  serializeJson(doc, buffer, bufferSize);
+  serializeJson(doc, temp);
+
+  return temp;
 }
 
-void generateJSON(boolean success, const char* msgKey, const char* msgValue, char* buffer, short bufferSize, boolean withKey = false){
-  StaticJsonDocument<256> doc;
-
-  doc["success"] = success;
-  doc[msgKey] = msgValue;
-
-  if(withKey){
-    generateRandomString(64, key);
-    doc["key"] = key;
-  }
-
-  serializeJson(doc, buffer, bufferSize);
-}
-
-void generateJSONWithConfig(boolean success, char* msgKey, char* msgValue, char* buffer, short bufferSize){
-  generateConfig(buffer, bufferSize);
-  generateRandomString(64, key);
-
-  StaticJsonDocument<1024> doc;
-
-  doc["success"] = success;
-  doc[msgKey] = msgValue;
-  doc["config"] = buffer;
-  doc["key"] = key;
-
-  serializeJson(doc, buffer, bufferSize);
-}
-
-void generateRandomString(byte len, char* buffer){
-  for(byte i = 0; i < len; i++){
-    byte randomValue = map(ESP.random()/16777215, 0, 255, 0, 63);
-    char letter = randomValue + 'a';
-    
-    if(randomValue >= 26 && randomValue <= 35){
-      letter = (randomValue - 26) + '0';
-    }else if(randomValue >= 36 && randomValue <= 61){
-      letter = (randomValue - 36) + 'A';
-    }else if(randomValue >= 62){
-      letter = '_';
-    }
-    
-    buffer[i] = letter;
-  }
-
-  buffer[len] = '\0';
-
-  randomSeed(analogRead(A0)*ESP.random() + micros()*ESP.random());
-}
-
-void generateStats(char* buffer, short bufferSize){
-  StaticJsonDocument<768> doc;
+String generateStats(){
+  String stats = "";
+  String staStatus = "";
+  String wlanMode = "";
+  String wlanPhyMode = "";
   
-  const char* staStatus;
-  const char* wlanMode;
-  const char* wlanPhyMode;
+  StaticJsonDocument<768> doc;
 
   switch(WiFi.status()){
     case WL_IDLE_STATUS :
@@ -329,15 +332,14 @@ void generateStats(char* buffer, short bufferSize){
   doc["staDNS1"] = WiFi.dnsIP(0).toString();
   doc["staDNS2"] = WiFi.dnsIP(1).toString();
 
-  serializeJson(doc, buffer, bufferSize);
+  serializeJson(doc, stats);
+
+  return stats;
 }
 
-boolean ipValid(const char* ip){
+boolean ipValid(String& ip){
   unsigned long num = toul(ip);
-  char buf[65];
-  ultoa(num, buf, 10);
-
-  return strcmp(ip, buf) == 0 && num > 0 && num < 4294967295;
+  return ip.equals(String(num)) && num > 0 && num < 4294967295;
 }
 
 IPAddress ntoip(unsigned long num){
@@ -355,36 +357,34 @@ IPAddress ntoip(unsigned long num){
   return IPAddress(arr[0], arr[1], arr[2], arr[3]);
 }
 
-void readFile(fs::FS &fs, const char* path, char* buffer, short bufferSize){
+String readFile(fs::FS &fs, const char* path){
   File file = fs.open(path, "r");
   
   if(!file || file.isDirectory()){
-    buffer = "";
-    return;
+    return String();
   }
 
-  short i = 0;
+  String result;
   
-  while(file.available() && i < bufferSize){
-    buffer[i++] = (char) file.read();
+  while(file.available()){
+    result += (char) file.read();
   }
-
-  buffer[i] = '\0';
+  
+  return result;
 }
 
 void saveConfig(){
-  char temp[768];
-
+  String temp = "";
   serializeJson(configDoc, temp);
-  deserializeJson(configDoc, (const char*) temp);
-
-  if(writeFile(LittleFS, configPath, temp)){
+  deserializeJson(configDoc, temp);
+  
+  if(writeFile(LittleFS, configPath, temp.c_str())){
     Serial.println("Configuration Saved");
   }
 }
 
 void statsLoop(){
-  if(millis() - lastStatsUpdate >= 250){
+  if(millis() - lastStatsUpdate >= 1000){
     freeHeap = ESP.getFreeHeap();
     heapFragPerc = ESP.getHeapFragmentation();
     maxHeapBlock = ESP.getMaxFreeBlockSize();
@@ -393,37 +393,10 @@ void statsLoop(){
   }
 }
 
-unsigned long toul(const char* str){
-  return strtoul(str, nullptr, 0);
-}
-
 void uptimeLoop(){
   if(millis() - lastUptimeUpdate >= 1000){
     uptime++;
     lastUptimeUpdate = millis();
-  }
-}
-
-void wifiScanLoop(){
-  if(millis() - lastScan >= 5000){
-    WiFi.scanNetworks(true);
-    lastScan = millis();
-  }
-
-  short n = WiFi.scanComplete();
-  
-  if(n >= 0){
-    wifiScan.clear();
-    
-    for (int i = 0; i < n && i < 10; i++){
-      JsonObject doc = wifiScan.createNestedObject();
-      
-      doc["ssid"] = WiFi.SSID(i);
-      doc["open"] = WiFi.encryptionType(i) == ENC_TYPE_NONE ? 1 : 0;
-      doc["rssi"] = WiFi.RSSI(i);
-    }
-    
-    WiFi.scanDelete();
   }
 }
 
@@ -443,7 +416,8 @@ boolean writeFile(fs::FS &fs, const char* path, const char* message){
 
 //  SERVER METHODS
 
-const char* getContentType(String filename){
+
+String getContentType(String filename){
   if(filename.endsWith(".gzp")){
     filename = filename.substring(0, filename.length() - 4);
   }
@@ -464,26 +438,21 @@ const char* getContentType(String filename){
 }
 
 String templateProcessor(const String& var){
-  if(var.equals("CONFIG")){
-    char configTemp[768];
-    generateConfig(configTemp, 768);
-
-    return configTemp;
+  if(var.equals("MAIN_JS")){
+    return String(mainJS);
+  }else if(var.equals("CONFIG")){
+    return generateConfig();
   }else if(var.equals("STATS")){
-    char statsTemp[768];
-    generateStats(statsTemp, 768);
-
-    return statsTemp;
-  }else if(var.equals("SCAN")){
-    char temp[1024];
-    serializeJson(wifiScan, temp);
-
-    return temp;
+    return generateStats();
   }else if(var.equals("KEY")){
-    return key;
+    return String(key);
   }
   
-  return "";
+  return String();
+}
+
+unsigned long toul(String str){
+  return strtoul(str.c_str(), nullptr, 0);
 }
 
 void indexHandler(AsyncWebServerRequest *request){
@@ -491,8 +460,16 @@ void indexHandler(AsyncWebServerRequest *request){
     return request->requestAuthentication();
   }
   
-  generateRandomString(64, key);
+  generateRandomString(128).toCharArray(key, 129);
   request->send(LittleFS, "/index.html", "text/html", false, templateProcessor);
+}
+
+void mainJSHandler(AsyncWebServerRequest *request){
+  AsyncWebServerResponse* response = request->beginResponse(LittleFS, "/main.js.gzp", "application/javascript");
+  response->addHeader("Cache-Control", "max-age=86400");
+  response->addHeader("Content-Encoding", "gzip");
+  
+  request->send(response);
 }
 
 void logoutHandler(AsyncWebServerRequest *request){
@@ -514,9 +491,7 @@ void setAPHandler(AsyncWebServerRequest *request){
     }
   }
 
-  char msg[1024];
-  generateJSON(false, "message", "PARAM INVALID", msg, 1024, true);
-
+  String msg = generateJSON(false, "message", "PARAM INVALID", true);
   boolean save = false;
 
   if(request->hasParam("set", true)){
@@ -532,9 +507,9 @@ void setAPHandler(AsyncWebServerRequest *request){
           configDoc["appass"] = appass;
           
           save = true;
-          generateJSONWithConfig(true, "message", "OK", msg, 1024);
+          msg = generateJSONWithConfig(true, "message", "OK");
         }else{
-          generateJSON(false, "message", "SSID OR PASS LENGTH INVALID", msg, 1024, true);
+          msg = generateJSON(false, "message", "SSID OR PASS LENGTH INVALID", true);
         }
       }
     }else if(setValue.equals("ip")){
@@ -547,12 +522,12 @@ void setAPHandler(AsyncWebServerRequest *request){
           configDoc["apSN"] = nullptr;
           
           save = true;
-          generateJSONWithConfig(true, "message", "OK", msg, 1024);
+          msg = generateJSONWithConfig(true, "message", "OK");
         }else{
           if(request -> hasParam("ip", true) && request -> hasParam("gw", true) && request -> hasParam("sn", true)){
-            const char* ip = request -> getParam("ip", true)->value() == nullptr ? "" : request -> getParam("ip", true)->value().c_str();
-            const char* gw = request -> getParam("gw", true)->value() == nullptr ? "" : request -> getParam("gw", true)->value().c_str();
-            const char* sn = request -> getParam("sn", true)->value() == nullptr ? "" : request -> getParam("sn", true)->value().c_str();
+            String ip = request -> getParam("ip", true)->value() == nullptr ? "" : request -> getParam("ip", true)->value();
+            String gw = request -> getParam("gw", true)->value() == nullptr ? "" : request -> getParam("gw", true)->value();
+            String sn = request -> getParam("sn", true)->value() == nullptr ? "" : request -> getParam("sn", true)->value();
             
             if(ipValid(ip) && ipValid(gw)&& ipValid(sn)){
               configDoc["apIP"] = toul(ip);
@@ -560,9 +535,9 @@ void setAPHandler(AsyncWebServerRequest *request){
               configDoc["apSN"] = toul(sn);
               
               save = true;
-              generateJSONWithConfig(true, "message", "OK", msg, 1024);
+              msg = generateJSONWithConfig(true, "message", "OK");
             }else{
-              generateJSON(false, "message", "IP DATA INVALID", msg, 1024, true);
+              msg = generateJSON(false, "message", "IP DATA INVALID", true);
             }
           }
         }
@@ -591,27 +566,25 @@ void setStationHandler(AsyncWebServerRequest *request){
     }
   }
 
-  char msg[1024];
-  generateJSON(false, "message", "PARAM INVALID", msg, 1024, true);
-
+  String msg = generateJSON(false, "message", "PARAM INVALID", true);
   boolean save = false;
 
   if(request->hasParam("set", true)){
-      String setValue = request -> getParam("set", true)->value() == nullptr ? "" : request -> getParam("set", true)->value();
+    String setValue = request -> getParam("set", true)->value() == nullptr ? "" : request -> getParam("set", true)->value();
 
     if(setValue.equals("sta")){
       if(request -> hasParam("stassid", true) && request -> hasParam("stapass", true)){
         String stassid = request -> getParam("stassid", true)->value() == nullptr ? "" : request -> getParam("stassid", true)->value();
         String stapass = request -> getParam("stapass", true)->value() == nullptr ? "" : request -> getParam("stapass", true)->value();
   
-        if(stassid.length() >= 0 && stassid.length() <= 32 && stapass.length() == 0 || (stapass.length() >= 8 && stapass.length() <= 63)){
+        if(stassid.length() >= 0 && stassid.length() <= 32 && (stapass.length() == 0 || (stapass.length() >= 8 && stapass.length() <= 63))){
           configDoc["stassid"] = stassid;
           configDoc["stapass"] = stapass;
           
           save = true;
-          generateJSONWithConfig(true, "message", "OK", msg, 1024);
+          msg = generateJSONWithConfig(true, "message", "OK");
         }else{
-          generateJSON(false, "message", "SSID OR PASS LENGTH INVALID", msg, 1024, true);
+          msg = generateJSON(false, "message", "SSID OR PASS LENGTH INVALID", true);
         }
       }
     }else if(setValue.equals("ip")){
@@ -624,12 +597,12 @@ void setStationHandler(AsyncWebServerRequest *request){
           configDoc["staSN"] = nullptr;
           
           save = true;
-          generateJSONWithConfig(true, "message", "OK", msg, 1024);
+          msg = generateJSONWithConfig(true, "message", "OK");
         }else{
           if(request -> hasParam("ip", true) && request -> hasParam("gw", true) && request -> hasParam("sn", true)){
-            const char* ip = request -> getParam("ip", true)->value() == nullptr ? "" : request -> getParam("ip", true)->value().c_str();
-            const char* gw = request -> getParam("gw", true)->value() == nullptr ? "" : request -> getParam("gw", true)->value().c_str();
-            const char* sn = request -> getParam("sn", true)->value() == nullptr ? "" : request -> getParam("sn", true)->value().c_str();
+            String ip = request -> getParam("ip", true)->value() == nullptr ? "" : request -> getParam("ip", true)->value();
+            String gw = request -> getParam("gw", true)->value() == nullptr ? "" : request -> getParam("gw", true)->value();
+            String sn = request -> getParam("sn", true)->value() == nullptr ? "" : request -> getParam("sn", true)->value();
             
             if(ipValid(ip) && ipValid(gw)&& ipValid(sn)){
               configDoc["staIP"] = toul(ip);
@@ -637,16 +610,16 @@ void setStationHandler(AsyncWebServerRequest *request){
               configDoc["staSN"] = toul(sn);
               
               save = true;
-              generateJSONWithConfig(true, "message", "OK", msg, 1024);
+              msg = generateJSONWithConfig(true, "message", "OK");
             }else{
-              generateJSON(false, "message", "IP DATA INVALID", msg, 1024, true);
+              msg = generateJSON(false, "message", "IP DATA INVALID", true);
             }
           }
         }
       }
     }
   }
-  
+
   request -> send(200, "application/json", msg);
 
   if(save){
@@ -668,9 +641,7 @@ void setDNSHandler(AsyncWebServerRequest *request){
     }
   }
 
-  char msg[1024];
-  generateJSON(false, "message", "PARAM INVALID", msg, 1024, true);
-
+  String msg = generateJSON(false, "message", "PARAM INVALID", true);
   boolean save = false;
 
   if(request->hasParam("dhcp", true)){
@@ -681,20 +652,20 @@ void setDNSHandler(AsyncWebServerRequest *request){
       configDoc["dns2"] = nullptr;
 
       save = true;
-      generateJSONWithConfig(true, "message", "OK", msg, 1024);
+      msg = generateJSONWithConfig(true, "message", "OK");
     }else{
       if(request -> hasParam("dns1", true) && request -> hasParam("dns2", true)){
-        const char* dns1 = request -> getParam("dns1", true)->value() == nullptr ? "" : request -> getParam("dns1", true)->value().c_str();
-        const char* dns2 = request -> getParam("dns2", true)->value() == nullptr ? "" : request -> getParam("dns2", true)->value().c_str();
+        String dns1 = request -> getParam("dns1", true)->value() == nullptr ? "" : request -> getParam("dns1", true)->value();
+        String dns2 = request -> getParam("dns2", true)->value() == nullptr ? "" : request -> getParam("dns2", true)->value();
         
         if(ipValid(dns1) && ipValid(dns2)){
           configDoc["dns1"] = toul(dns1);
           configDoc["dns2"] = toul(dns2);
           
           save = true;
-          generateJSONWithConfig(true, "message", "OK", msg, 1024);
+          msg = generateJSONWithConfig(true, "message", "OK");
         }else{
-          generateJSON(false, "message", "IP DATA INVALID", msg, 1024, true);
+          msg = generateJSON(false, "message", "IP DATA INVALID", true);
         }
       }
     }
@@ -721,9 +692,7 @@ void setWLANHandler(AsyncWebServerRequest *request){
     }
   }
 
-  char msg[1024];
-  generateJSON(false, "message", "PARAM INVALID", msg, 1024, true);
-
+  String msg = generateJSON(false, "message", "PARAM INVALID", true);
   boolean powerSet = false;
   boolean protocolSet = false;
 
@@ -737,10 +706,10 @@ void setWLANHandler(AsyncWebServerRequest *request){
         if(power >= 0 && power <= 20.5){
           configDoc["power"] = power;
           
-          generateJSONWithConfig(true, "message", "OK", msg, 1024);
+          msg = generateJSONWithConfig(true, "message", "OK");
           powerSet = true;
         }else{
-          generateJSON(false, "message", "POWER INVALID", msg, 1024, true);
+          msg = generateJSON(false, "message", "POWER INVALID", true);
         }
       }
     }else if(setValue.equals("protocol")){
@@ -750,10 +719,10 @@ void setWLANHandler(AsyncWebServerRequest *request){
         if(protocol == 1 || protocol == 2 || protocol == 3){
           configDoc["protocol"] = protocol;
           
-          generateJSONWithConfig(true, "message", "OK", msg, 1024);
+          msg = generateJSONWithConfig(true, "message", "OK");
           protocolSet = true;
         }else{
-          generateJSON(false, "message", "PROTOCOL INVALID", msg, 1024, true);
+          msg = generateJSON(false, "message", "PROTOCOL INVALID", true);
         }
       }
     }
@@ -785,9 +754,7 @@ void setCredentialHandler(AsyncWebServerRequest *request){
     }
   }
 
-  char msg[1024];
-  generateJSON(false, "message", "PARAM INVALID", msg, 1024, true);
-
+  String msg = generateJSON(false, "message", "PARAM INVALID", true);
   boolean save = false;
 
   if(request->hasParam("oldpass", true) && request->hasParam("newpass", true)){
@@ -799,12 +766,12 @@ void setCredentialHandler(AsyncWebServerRequest *request){
         configDoc["dbpass"] = newpass;
 
         save = true;
-        generateJSON(true, "message", "OK", msg, 1024, true);
+        msg = generateJSON(true, "message", "OK", true);
       }else{
-        generateJSON(false, "message", "NEW PASSWORD LENGTH INVALID", msg, 1024, true);
+        msg = generateJSON(false, "message", "NEW PASSWORD LENGTH INVALID", true);
       }
     }else{
-      generateJSON(false, "message", "OLD PASSWORD NOT MATCH", msg, 1024, true);
+      msg = generateJSON(false, "message", "OLD PASSWORD NOT MATCH", true);
     }
   }
 
@@ -822,20 +789,19 @@ void getConfigHandler(AsyncWebServerRequest *request){
   }else{
     String keyParam = request -> getParam("key", true)->value() == nullptr ? "" : request -> getParam("key", true)->value();
 
-    if(!keyParam.equals(key)){
+    if(!keyParam.equals(String(key))){
       request -> send(404);
       return;
     }
   }
 
   StaticJsonDocument<1024> doc;
-  char result[1024];
+  String result = "";
 
-  generateConfig(result, 1024);
-  generateRandomString(64, key);
+  generateRandomString(128).toCharArray(key, 129);
 
   doc["success"] = true;
-  doc["message"] = result;
+  doc["message"] = generateConfig();
   doc["key"] = key;
 
   serializeJson(doc, result);
@@ -850,56 +816,24 @@ void getStatsHandler(AsyncWebServerRequest *request){
   }else{
     String keyParam = request -> getParam("key", true)->value() == nullptr ? "" : request -> getParam("key", true)->value();
 
-    if(!keyParam.equals(key)){
+    if(!keyParam.equals(String(key))){
       request -> send(404);
       return;
     }
   }
 
   StaticJsonDocument<1024> doc;
-  char result[1024];
+  String result = "";
 
-  generateStats(result, 1024);
-  generateRandomString(64, key);
+  generateRandomString(128).toCharArray(key, 129);
 
   doc["success"] = true;
-  doc["message"] = result;
+  doc["message"] = generateStats();
   doc["key"] = key;
 
   serializeJson(doc, result);
   
   request -> send(200, "application/json", result);
-}
-
-void getWifiScanHandler(AsyncWebServerRequest *request){
-  if(!request->hasParam("key", true)){
-    request -> send(404);
-    return;
-  }else{
-    String keyParam = request -> getParam("key", true)->value() == nullptr ? "" : request -> getParam("key", true)->value();
-
-    if(!keyParam.equals(key)){
-      request -> send(404);
-      return;
-    }
-  }
-
-  char temp[1280];
-  serializeJson(wifiScan, temp);
-
-  StaticJsonDocument<1280> doc;
-
-  generateRandomString(64, key);
-
-  doc["success"] = true;
-  doc["message"] = temp;
-  doc["key"] = key;
-
-  strcpy(temp, "");
-  
-  serializeJson(doc, temp);
-  
-  request -> send(200, "application/json", temp);
 }
 
 void getKeyHandler(AsyncWebServerRequest *request){
@@ -910,6 +844,14 @@ void getKeyHandler(AsyncWebServerRequest *request){
   request -> send(200, "application/json", key);
 }
 
+void getMainJS(AsyncWebServerRequest *request){
+  if(!request->authenticate("admin", configDoc["dbpass"].as<const char*>())){
+    return request->requestAuthentication();
+  }
+  
+  request -> send(200, "application/json", mainJS);
+}
+
 void resetHandler(AsyncWebServerRequest *request){
   if(!request->hasParam("key", true)){
     request -> send(404);
@@ -917,16 +859,13 @@ void resetHandler(AsyncWebServerRequest *request){
   }else{
     String keyParam = request -> getParam("key", true)->value() == nullptr ? "" : request -> getParam("key", true)->value();
 
-    if(!keyParam.equals(key)){
+    if(!keyParam.equals(String(key))){
       request -> send(404);
       return;
     }
   }
-
-  char data[256];
-  generateJSON(true, "message", "Resetting Config and restarting", data, 256);
   
-  request -> send(200, "application/json", data);
+  request -> send(200, "application/json", generateJSON(true, "message", "Resetting Config and restarting"));
   configResetTrigger = true;
 }
 
@@ -937,38 +876,19 @@ void restartHandler(AsyncWebServerRequest *request){
   }else{
     String keyParam = request -> getParam("key", true)->value() == nullptr ? "" : request -> getParam("key", true)->value();
 
-    if(!keyParam.equals(key)){
+    if(!keyParam.equals(String(key))){
       request -> send(404);
       return;
     }
   }
-
-  char data[256];
-  generateJSON(true, "message", "Restarting", data, 256);
   
-  request -> send(200, "application/json", data);
+  request -> send(200, "application/json", generateJSON(true, "message", "Restarting"));
   espRestartTrigger = true;
 }
 
 void notFound(AsyncWebServerRequest *request){
   if(request->url() == "/main.js.gzp"){
-    if(!request->hasParam("key")){
-      request -> send(404);
-      return;
-    }else{
-      String keyParam = request -> getParam("key")->value() == nullptr ? "" : request -> getParam("key")->value();
-
-      if(!keyParam.equals(key)){
-        request -> send(404);
-        return;
-      }
-    }
-
-    AsyncWebServerResponse* response = request->beginResponse(LittleFS, "/main.js.gzp", getContentType(request->url()), false);
-    response->addHeader("Cache-Control", "max-age=86400");
-    response->addHeader("Content-Encoding", "gzip");
-    
-    request->send(response);
+     request->send(404);
   }else{
     AsyncWebServerResponse* response = request->beginResponse(LittleFS, request->url(), getContentType(request->url()), false);
   
@@ -1013,6 +933,7 @@ void setup() {
 
   WiFi.mode(WIFI_AP_STA);
   WiFi.setAutoReconnect(true);
+  WiFi.hostname("ESP8266");
 
   uint8_t currapmac[6];
   uint8_t currstamac[6];
@@ -1029,40 +950,32 @@ void setup() {
   err_t initNAPT = ip_napt_init(napt, napt_port);
   
   if(initNAPT == ERR_OK){
-    Serial.print("NAPT initialization with ");
-    Serial.print(napt);
-    Serial.print(" NAT entries and ");
-    Serial.print(napt_port);
-    Serial.print(" port entries success (Error : ");
-    Serial.print(initNAPT);
-    Serial.println(")");
+    Serial.println("NAPT initialization with " + String(napt) + " NAT entries and " + String(napt_port) + " port entries success (Error : " + String(initNAPT) + ")");
     
     err_t enableNAPT = ip_napt_enable_no(SOFTAP_IF, true);
     
     if(enableNAPT == ERR_OK){
-      Serial.print("NAPT enabling success (Error : ");
-      Serial.print(enableNAPT);
-      Serial.println(")");
-      
+      Serial.println("NAPT enabling success (Error : " + String(enableNAPT) + ")");
       Serial.println("AP has been NATed behind station");
     }else{
-      Serial.print("NAPT enabling failed (Error : ");
-      Serial.print(enableNAPT);
-      Serial.println(")");
+      Serial.println("NAPT enabling failed (Error : " + String(enableNAPT) + ")");
     }
   }else{
-    Serial.print("NAPT initialization failed (Error : ");
-    Serial.print(initNAPT);
-    Serial.println(")");
+    Serial.println("NAPT initialization failed (Error : " + String(initNAPT) + ")");
   }
 
-  generateRandomString(64, key);
+  generateRandomString(128).toCharArray(key, 129);
+  
+  String mainjsurl = "/";
+  mainjsurl.concat(generateRandomString(32));
+  mainjsurl.toCharArray(mainJS, 34);
 
   server.on("/", HTTP_GET, indexHandler);
   server.on("/index", HTTP_GET, indexHandler);
   server.on("/index.html", HTTP_GET, indexHandler);
   server.on("/logout", HTTP_GET, logoutHandler);
   server.on("/logout.html", HTTP_GET, logoutHandler);
+  server.on(mainJS, HTTP_GET, mainJSHandler);
 
   server.on("/setap", HTTP_POST, setAPHandler);
   server.on("/setsta", HTTP_POST, setStationHandler);
@@ -1072,9 +985,9 @@ void setup() {
 
   server.on("/getconfig", HTTP_POST, getConfigHandler);
   server.on("/getstats", HTTP_POST, getStatsHandler);
-  server.on("/getwifiscan", HTTP_POST, getWifiScanHandler);
-  
+
   server.on("/getkey", HTTP_GET, getKeyHandler);
+  server.on("/getmainjs", HTTP_GET, getMainJS);
 
   server.on("/reset", HTTP_POST, resetHandler);
   server.on("/restart", HTTP_POST, restartHandler);
@@ -1083,14 +996,9 @@ void setup() {
   
   server.begin();
 
-  Serial.print("Free Heap: ");
-  Serial.println(ESP.getFreeHeap(), DEC);
-
-  Serial.print("Heap Fragmentation (%): ");
-  Serial.println(ESP.getHeapFragmentation(), DEC);
-
-  Serial.print("Max Heap Block: ");
-  Serial.println(ESP.getMaxFreeBlockSize(), DEC);
+  Serial.println("Free Heap: " + String(ESP.getFreeHeap()));
+  Serial.println("Heap Fragmentation: " + String(ESP.getHeapFragmentation()));
+  Serial.println("Max Heap Block: " + String(ESP.getMaxFreeBlockSize()));
 
   freeHeap = ESP.getFreeHeap();
   heapFragPerc = ESP.getHeapFragmentation();
@@ -1106,6 +1014,9 @@ void loop() {
 
     delay(100);
 
+    String apSSID = configDoc["apssid"];
+    String apPW = configDoc["appass"];
+
     if(configDoc["apIP"] == nullptr || configDoc["apGW"] == nullptr || configDoc["apSN"] == nullptr){
       apIP = IPAddress(192, 168, 4, 1);
       apGateway = IPAddress(192, 168, 4, 1);
@@ -1118,20 +1029,13 @@ void loop() {
 
     WiFi.softAPConfig(apIP, apGateway, apSubnet);
 
-    String apssid = configDoc["apssid"].as<String>();
-    String appass = configDoc["appass"].as<String>();
-
-    if(appass.equals("")){
-      WiFi.softAP(apssid);
+    if(configDoc["appass"].as<String>() == ""){
+      WiFi.softAP(configDoc["apssid"].as<String>());
     }else{
-      WiFi.softAP(apssid, appass);
+      WiFi.softAP(configDoc["apssid"].as<String>(), configDoc["appass"].as<String>());
     }
 
-    Serial.print("AP ");
-    Serial.print(apssid);
-    Serial.print(" (IP : ");
-    Serial.print(WiFi.softAPIP().toString());
-    Serial.println(") initialized");
+    Serial.println("AP " + configDoc["apssid"].as<String>() + " (IP : " + WiFi.softAPIP().toString() + ") initialized");
 
     setAPTrigger = false;
   }
@@ -1141,10 +1045,7 @@ void loop() {
 
     delay(100);
 
-    String stassid = configDoc["stassid"].as<String>();
-    String stapass = configDoc["stapass"].as<String>();
-
-    if(stassid.equals("")){
+    if(configDoc["stassid"].as<String>() == ""){
       Serial.println("WLAN NO STATION");
       noStation = true;
     }else{
@@ -1152,14 +1053,13 @@ void loop() {
         WiFi.config(ntoip(configDoc["staIP"].as<unsigned long>()), ntoip(configDoc["staGW"].as<unsigned long>()), ntoip(configDoc["staSN"].as<unsigned long>()));
       }
 
-      if(stapass.equals("")){
-        WiFi.begin(stassid);
+      if(configDoc["stapass"].as<String>() == ""){
+        WiFi.begin(configDoc["stassid"].as<String>());
       }else{
-        WiFi.begin(stassid, stapass);
+        WiFi.begin(configDoc["stassid"].as<String>(), configDoc["stapass"].as<String>());
       }
 
-      Serial.print("Station set to ");
-      Serial.println(stassid);
+      Serial.println("Station set to " + configDoc["stassid"].as<String>());
 
       noStation = false;
       firstConnect = true;
@@ -1188,10 +1088,7 @@ void loop() {
       dhcpSoftAP.dhcps_set_dns(0, ntoip(configDoc["dns1"].as<unsigned long>()));
       dhcpSoftAP.dhcps_set_dns(1, ntoip(configDoc["dns2"].as<unsigned long>()));
 
-      Serial.print("DNS set custom 1 : ");
-      Serial.print(ntoip(configDoc["dns1"].as<unsigned long>()).toString());
-      Serial.print(" 2 : ");
-      Serial.println(ntoip(configDoc["dns2"].as<unsigned long>()).toString());
+      Serial.println("DNS set custom 1 : " + ntoip(configDoc["dns1"].as<unsigned long>()).toString() + " 2 : " + ntoip(configDoc["dns2"].as<unsigned long>()).toString());
 
       setDNSTrigger = false;
     }
@@ -1201,8 +1098,7 @@ void loop() {
     float power = configDoc["power"].as<float>();
     WiFi.setOutputPower(power);
 
-    Serial.print("WiFi Tx power set to ");
-    Serial.println(power);
+    Serial.println("WiFi Tx power set to " + String(power));
 
     setPowerTrigger = false;
   }
@@ -1210,24 +1106,23 @@ void loop() {
   if(setProtocolTrigger){
     WiFiPhyMode_t protocol = (WiFiPhyMode_t) configDoc["protocol"].as<byte>();
 
-    char wlanPhyMode[8];
+    String wlanPhyMode = "";
 
     switch(protocol){
       case WIFI_PHY_MODE_11B :
-        strcpy(wlanPhyMode, "802.11b");
+        wlanPhyMode = "802.11b";
         break;
       case WIFI_PHY_MODE_11G :
-        strcpy(wlanPhyMode, "802.11g");
+        wlanPhyMode = "802.11g";
         break;
       case WIFI_PHY_MODE_11N :
-        strcpy(wlanPhyMode, "802.11n");
+        wlanPhyMode = "802.11n";
         break;
     }
 
     WiFi.setPhyMode(protocol);
 
-    Serial.print("WiFi Protocol set to ");
-    Serial.println(wlanPhyMode);
+    Serial.println("WiFi Protocol set to " + wlanPhyMode);
 
     setProtocolTrigger = false;
   }
@@ -1235,27 +1130,19 @@ void loop() {
   blinkLedLoop();
   statsLoop();
   uptimeLoop();
-  wifiScanLoop();
 
   if((firstConnect || reconnectFlag) && WiFi.isConnected()){
     if(firstConnect){
-       Serial.print("Connected to ");
-
+       Serial.println("Connected to " + WiFi.SSID() + " (IP : " + WiFi.localIP().toString() + ")");
        firstConnect = false;
        setDNSTrigger = true;
     }
     
     if(reconnectFlag){
-       Serial.print("Reconnected to ");
-       
+       Serial.println("Reconnected to " + WiFi.SSID() + " (IP : " + WiFi.localIP().toString() + ")");
        reconnectFlag = false;
        setDNSTrigger = true;
     }
-
-    Serial.print(WiFi.SSID());
-    Serial.print(" (IP : ");
-    Serial.print(WiFi.localIP().toString());
-    Serial.print(")");
   }
 
   if(Serial.available() > 0){
