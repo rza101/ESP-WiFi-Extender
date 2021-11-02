@@ -1021,7 +1021,7 @@ void setup() {
   WiFi.macAddress(currstamac);
   
   uint8_t apmac[] = {0x60, 0x01, 0x94, currapmac[3], currapmac[4], currapmac[5]};
-  uint8_t stamac[] = {0x60, 0x01, 0x94, currstamac[3], currstamac[4], currstamac[5]};
+  uint8_t stamac[] = {0x60, 0x01, 0x94, currstamac[3], currstamac[4], currstamac[5] + 1};
   
   wifi_set_macaddr(SOFTAP_IF, &apmac[0]);
   wifi_set_macaddr(STATION_IF, &stamac[0]);

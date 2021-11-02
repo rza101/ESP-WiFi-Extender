@@ -4,6 +4,12 @@ This project enables NAPT feature in ESP8266, so the chip can be used as WiFi ra
 
 ![dashboard](img/dashboard.png)
 
+## Library used in this project
+
+- [ArduinoJSON](https://arduinojson.org/)
+- [ESPAsyncWebServer](https://github.com/me-no-dev/ESPAsyncWebServer)
+- [ESPAsyncTCP](https://github.com/me-no-dev/ESPAsyncTCP)
+
 ## How To Use
 
 - Upload the sketch code and web data code 
